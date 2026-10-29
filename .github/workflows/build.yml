@@ -1,47 +1,37 @@
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-name: Build Hesabat Alabari APK
+  - name: Set up Java
+    uses: actions/setup-java@v4
+    with:
+      distribution: zulu
+      java-version: '17'
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+  - name: Set up Flutter
+    uses: subosito/flutter-action@v2
+    with:
+      channel: stable
+      flutter-version: '3.24.5'
+      cache: true
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+  - name: Generate Android project
+    run: flutter create . --org com.alshaheen.fishingaccounts --project-name fishing_boat_accounts --platforms=android --no-pub
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  - name: Remove generated sample test
+    run: rm -rf test
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: '17'
+  - name: Install dependencies
+    run: flutter pub get
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: '3.24.5'
-          cache: true
+  - name: Check code
+    run: flutter analyze
 
-      - name: Generate Android project
-        run: flutter create . --org com.alshaheen.fishingaccounts --project-name fishing_boat_accounts --platforms=android --no-pub
+  - name: Build APK
+    run: flutter build apk --release
 
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Check code
-        run: flutter analyze
-
-      - name: Build APK
-        run: flutter build apk --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: hesabat-alabari-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+  - name: Upload APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: hesabat-alabari-apk
+      path: build/app/outputs/flutter-apk/app-release.apk
