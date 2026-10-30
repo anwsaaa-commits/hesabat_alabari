@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -18,14 +20,19 @@ void main() async {
   runApp(const BoatAccountsApp());
 }
 
-class BoatAccountsApp extends StatelessWidget {
+class BoatAccountsApp extends StatefulWidget {
   const BoatAccountsApp({super.key});
+  @override
+  State<BoatAccountsApp> createState() => _BoatAccountsAppState();
+}
 
+class _BoatAccountsAppState extends State<BoatAccountsApp> {
   @override
   Widget build(BuildContext context) {
+    final dark = Store.isDarkMode;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'حسابات العبري',
+      title: 'إدارة حسابات العبري',
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar'), Locale('en')],
       localizationsDelegates: const [
@@ -35,35 +42,25 @@ class BoatAccountsApp extends StatelessWidget {
       ],
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: navy,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: gold,
-          brightness: Brightness.dark,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: navy,
-          foregroundColor: Colors.white,
-        ),
+        brightness: dark ? Brightness.dark : Brightness.light,
+        scaffoldBackgroundColor: dark ? navy : const Color(0xFFF3F5F7),
+        colorScheme: ColorScheme.fromSeed(seedColor: gold, brightness: dark ? Brightness.dark : Brightness.light),
+        appBarTheme: AppBarTheme(backgroundColor: dark ? navy : Colors.white, foregroundColor: dark ? Colors.white : navy),
         inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: navy2,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFF31536A)),
-          ),
-          labelStyle: const TextStyle(color: Colors.white70),
+          filled: true, fillColor: dark ? navy2 : const Color(0xFFE8EDF1),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: dark ? const Color(0xFF31536A) : Colors.black26)),
         ),
+        filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(minimumSize: const Size(0, 46), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))),
+        outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))),
       ),
-      home: const DashboardPage(),
+      home: DashboardPage(onThemeChanged: () => setState(() {})),
     );
   }
 }
 
 String money(num value) => NumberFormat('#,##0.##', 'en').format(value);
-String dateNow() => DateFormat('yyyy-MM-dd').format(DateTime.now());
+String dateNow() => DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
 String newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
@@ -248,6 +245,10 @@ class Store {
   static List<DebtEntry> debts = [];
   static String email = '';
   static String activeBoatId = '';
+  static bool isDarkMode = true;
+  static List<Map<String, dynamic>> monthlyArchives = [];
+  static const _themeKey = 'app_dark_mode_v1';
+  static const _monthlyArchivesKey = 'monthly_archives_v1';
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -277,6 +278,16 @@ class Store {
         .toList();
 
     email = prefs.getString('backup_email') ?? '';
+    isDarkMode = prefs.getBool(_themeKey) ?? true;
+    try {
+      final archiveRaw = prefs.getString(_monthlyArchivesKey);
+      final archiveDecoded = archiveRaw == null ? [] : jsonDecode(archiveRaw);
+      monthlyArchives = archiveDecoded is List
+          ? archiveDecoded.map((e) => Map<String, dynamic>.from(e)).toList()
+          : [];
+    } catch (_) {
+      monthlyArchives = [];
+    }
     activeBoatId = prefs.getString('active_boat') ?? '';
 
     if (boats.isEmpty) {
@@ -311,6 +322,8 @@ class Store {
     );
     await prefs.setString('backup_email', email);
     await prefs.setString('active_boat', activeBoatId);
+    await prefs.setBool(_themeKey, isDarkMode);
+    await prefs.setString(_monthlyArchivesKey, jsonEncode(monthlyArchives));
   }
 
   static Boat get activeBoat {
@@ -345,7 +358,8 @@ class Store {
 }
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  final VoidCallback onThemeChanged;
+  const DashboardPage({super.key, required this.onThemeChanged});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -371,10 +385,11 @@ class _DashboardPageState extends State<DashboardPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'حسابات ${Store.activeBoat.name}',
+          'إدارة حسابات العبري',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(tooltip: 'تبديل الوضع الفاتح والداكن', icon: Icon(Store.isDarkMode ? Icons.light_mode : Icons.dark_mode, color: gold), onPressed: () async { Store.isDarkMode = !Store.isDarkMode; await Store.save(); widget.onThemeChanged(); }),
           PopupMenuButton<String>(
             icon: const Icon(Icons.directions_boat, color: gold),
             tooltip: 'تبديل العبري',
@@ -444,15 +459,11 @@ class _DashboardPageState extends State<DashboardPage> {
           child: const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.sailing, size: 44, color: gold),
+              Icon(Icons.directions_boat_filled, size: 48, color: gold),
               SizedBox(height: 8),
               Text(
                 'إدارة حسابات العبري',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-              ),
-              Text(
-                'كل حسابات مشروع الصيد في مكان واحد',
-                style: TextStyle(color: Colors.white70),
               ),
             ],
           ),
@@ -526,16 +537,17 @@ class _DashboardPageState extends State<DashboardPage> {
             onTap: _openLicense,
           ),
         ),
-        FilledButton.icon(
+        SizedBox(height: 46, child: FilledButton.icon(
           onPressed: _openLicense,
           icon: const Icon(Icons.edit_document),
           label: const Text('إدارة بيانات الرخصة'),
-        ),
-        FilledButton.icon(
+        )),
+        const SizedBox(height: 8),
+        SizedBox(height: 46, child: FilledButton.icon(
           onPressed: () => makePdfReport(),
           icon: const Icon(Icons.picture_as_pdf),
           label: const Text('إنشاء تقرير PDF'),
-        ),
+        )),
       ],
     );
   }
@@ -688,21 +700,16 @@ class _ExpensesPageState extends State<ExpensesPage> {
                             ),
                           ),
                           subtitle: Text(
-                            '${expense.date} • الكمية ${money(expense.quantity)} × ${money(expense.unitPrice)}'
+                            '${money(expense.total)} ر.ي • ${expense.date} • الكمية ${money(expense.quantity)} × ${money(expense.unitPrice)}'
                             '${expense.person.isEmpty ? '' : '\nالمستلم: ${expense.person}'}'
                             '${expense.notes.isEmpty ? '' : '\nملاحظات: ${expense.notes}'}',
                           ),
                           isThreeLine:
                               expense.person.isNotEmpty || expense.notes.isNotEmpty,
-                          trailing: Text(
-                            '${money(expense.total)}\nر.ي',
-                            textAlign: TextAlign.end,
-                            style: const TextStyle(
-                              color: gold,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          onLongPress: () => _deleteExpense(expense),
+                          trailing: SizedBox(width: 112, child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(tooltip: 'تعديل', visualDensity: VisualDensity.compact, onPressed: () => _addExpense(existing: expense), icon: const Icon(Icons.edit, color: gold, size: 20)),
+                            IconButton(tooltip: 'حذف', visualDensity: VisualDensity.compact, onPressed: () => _deleteExpense(expense), icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20)),
+                          ])),
                         ),
                       );
                     },
@@ -740,18 +747,18 @@ class _ExpensesPageState extends State<ExpensesPage> {
     widget.onChanged();
   }
 
-  Future<void> _addExpense() async {
-    final item = TextEditingController();
-    final quantity = TextEditingController(text: '1');
-    final price = TextEditingController();
-    final person = TextEditingController();
-    final notes = TextEditingController();
+  Future<void> _addExpense({Expense? existing}) async {
+    final item = TextEditingController(text: existing?.item ?? '');
+    final quantity = TextEditingController(text: existing?.quantity.toString() ?? '1');
+    final price = TextEditingController(text: existing?.unitPrice.toString() ?? '');
+    final person = TextEditingController(text: existing?.person ?? '');
+    final notes = TextEditingController(text: existing?.notes ?? '');
     final formKey = GlobalKey<FormState>();
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('إضافة: $category'),
+        title: Text(existing == null ? 'إضافة: $category' : 'تعديل المصروف'),
         content: SingleChildScrollView(
           child: Form(
             key: formKey,
@@ -783,19 +790,11 @@ class _ExpensesPageState extends State<ExpensesPage> {
     );
 
     if (confirmed == true) {
-      Store.expenses.add(
-        Expense(
-          id: newId(),
-          boatId: Store.activeBoatId,
-          category: category,
-          item: item.text.trim(),
-          date: dateNow(),
-          quantity: double.parse(quantity.text),
-          unitPrice: double.parse(price.text),
-          person: person.text.trim(),
-          notes: notes.text.trim(),
-        ),
-      );
+      if (existing == null) {
+        Store.expenses.add(Expense(id: newId(), boatId: Store.activeBoatId, category: category, item: item.text.trim(), date: dateNow(), quantity: double.parse(quantity.text), unitPrice: double.parse(price.text), person: person.text.trim(), notes: notes.text.trim()));
+      } else {
+        existing.item = item.text.trim(); existing.quantity = double.parse(quantity.text); existing.unitPrice = double.parse(price.text); existing.person = person.text.trim(); existing.notes = notes.text.trim();
+      }
       await Store.save();
       if (mounted) setState(() {});
       widget.onChanged();
@@ -863,13 +862,44 @@ class _FishermenPageState extends State<FishermenPage> {
                       ),
                     ),
                     isThreeLine: true,
-                    trailing: const Icon(Icons.chevron_left),
+                    trailing: SizedBox(width: 104, child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(tooltip: 'تعديل الصياد', visualDensity: VisualDensity.compact, onPressed: () => _editFisher(fisher), icon: const Icon(Icons.edit, color: gold, size: 20)),
+                      IconButton(tooltip: 'حذف الصياد', visualDensity: VisualDensity.compact, onPressed: () => _deleteFisher(fisher), icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20)),
+                    ])),
                     onTap: () => _fisherDetails(fisher),
                   ),
                 );
               },
             ),
     );
+  }
+
+  Future<void> _editFisher(Fisherman fisher) async {
+    final name = TextEditingController(text: fisher.name);
+    final address = TextEditingController(text: fisher.address);
+    final phone = TextEditingController(text: fisher.phone);
+    final opening = TextEditingController(text: fisher.openingDebt.toString());
+    final key = GlobalKey<FormState>();
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('تعديل بيانات الصياد'),
+      content: Form(key: key, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [field(name, 'اسم الصياد', required: true), field(address, 'العنوان'), field(phone, 'رقم الجوال'), field(opening, 'الرصيد الافتتاحي', required: true, number: true)]))),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')), FilledButton(onPressed: () => Navigator.pop(ctx, key.currentState!.validate()), child: const Text('حفظ'))],
+    ));
+    if (ok == true) { fisher.name=name.text.trim(); fisher.address=address.text.trim(); fisher.phone=phone.text.trim(); fisher.openingDebt=double.parse(opening.text); await Store.save(); if (mounted) { setState(() {}); widget.onChanged(); } }
+    name.dispose(); address.dispose(); phone.dispose(); opening.dispose();
+  }
+
+  Future<void> _deleteFisher(Fisherman fisher) async {
+    final count = Store.debts.where((e) => e.fishermanId == fisher.id && e.boatId == fisher.boatId).length;
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('حذف الصياد؟'),
+      content: Text('سيتم حذف الصياد «${fisher.name}» وسجل عملياته المالية ($count عملية). لا يمكن التراجع عن ذلك.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف الصياد'))],
+    ));
+    if (ok != true) return;
+    Store.fishers.removeWhere((e) => e.id == fisher.id && e.boatId == fisher.boatId);
+    Store.debts.removeWhere((e) => e.fishermanId == fisher.id && e.boatId == fisher.boatId);
+    await Store.save(); if (mounted) { setState(() {}); widget.onChanged(); }
   }
 
   Future<void> _addFisher() async {
@@ -963,6 +993,8 @@ class _FishermenPageState extends State<FishermenPage> {
                 ),
               ),
               const SizedBox(height: 12),
+              _fisherLedger(fisher),
+              const SizedBox(height: 12),
               Form(
                 key: formKey,
                 child: Column(
@@ -1011,6 +1043,46 @@ class _FishermenPageState extends State<FishermenPage> {
     if (mounted) setState(() {});
   }
 
+  Widget _fisherLedger(Fisherman fisher) {
+    final entries = Store.debts.where((e) => e.fishermanId == fisher.id && e.boatId == fisher.boatId).toList()..sort((a,b) => b.date.compareTo(a.date));
+    final debts = entries.where((e) => e.type == 'دين').fold(0.0, (sum,e) => sum + e.amount);
+    final payments = entries.where((e) => e.type == 'سداد').fold(0.0, (sum,e) => sum + e.amount);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('كشف الحساب: ديون ${money(debts)} • سداد ${money(payments)} • رصيد افتتاحي ${money(fisher.openingDebt)}', style: const TextStyle(color: gold, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 6),
+      if (entries.isEmpty) const Text('لا توجد عمليات مسجلة بعد', style: TextStyle(color: Colors.white60)),
+      ...entries.map((entry) => Card(color: navy2, child: ListTile(
+        dense: true,
+        title: Text('${entry.type}: ${money(entry.amount)} ر.ي'),
+        subtitle: Text('${entry.date}\n${entry.description}'),
+        isThreeLine: true,
+        trailing: SizedBox(width: 88, child: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(tooltip: 'تعديل العملية', visualDensity: VisualDensity.compact, onPressed: () => _editDebtEntry(entry), icon: const Icon(Icons.edit, color: gold, size: 19)),
+          IconButton(tooltip: 'حذف العملية', visualDensity: VisualDensity.compact, onPressed: () => _deleteDebtEntry(entry), icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 19)),
+        ])),
+      ))),
+    ]);
+  }
+
+  Future<void> _editDebtEntry(DebtEntry entry) async {
+    final amount = TextEditingController(text: entry.amount.toString());
+    final description = TextEditingController(text: entry.description);
+    final key = GlobalKey<FormState>();
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: Text('تعديل ${entry.type}'),
+      content: Form(key: key, child: Column(mainAxisSize: MainAxisSize.min, children: [field(amount, 'المبلغ', required: true, number: true), field(description, 'البيان')])),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')), FilledButton(onPressed: () => Navigator.pop(ctx, key.currentState!.validate()), child: const Text('حفظ'))],
+    ));
+    if (ok == true) { entry.amount=double.parse(amount.text); entry.description=description.text.trim(); await Store.save(); if (mounted) setState(() {}); widget.onChanged(); }
+    amount.dispose(); description.dispose();
+  }
+
+  Future<void> _deleteDebtEntry(DebtEntry entry) async {
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('حذف العملية؟'), content: Text('${entry.type}: ${money(entry.amount)} ر.ي'), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف'))]));
+    if (ok != true) return;
+    Store.debts.removeWhere((e) => e.id == entry.id); await Store.save(); if (mounted) setState(() {}); widget.onChanged();
+  }
+
   Future<void> _saveDebt(
     BuildContext dialogContext,
     Fisherman fisher,
@@ -1043,6 +1115,169 @@ class _FishermenPageState extends State<FishermenPage> {
   }
 }
 
+DateTime? _archiveDate(String value) {
+  return DateTime.tryParse(value.trim().replaceFirst(' ', 'T'));
+}
+
+String _monthLabel(String key) {
+  final parts = key.split('-');
+  if (parts.length != 2) return key;
+  const months = [
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+  ];
+  final month = int.tryParse(parts[1]) ?? 0;
+  if (month < 1 || month > 12) return key;
+  return '${months[month - 1]} ${parts[0]}';
+}
+
+Future<void> _createMonthlyArchive(BuildContext context) async {
+  final selected = await showDatePicker(
+    context: context,
+    initialDate: DateTime.now(),
+    firstDate: DateTime(2000),
+    lastDate: DateTime(2100),
+    helpText: 'اختر أي تاريخ من الشهر المراد ترحيله',
+    cancelText: 'إلغاء',
+    confirmText: 'اختيار الشهر',
+  );
+  if (selected == null || !context.mounted) return;
+  final monthKey = DateFormat('yyyy-MM').format(selected);
+  final boatId = Store.activeBoatId;
+  final existing = Store.monthlyArchives.any(
+    (a) => a['month'] == monthKey && a['boatId'] == boatId,
+  );
+  if (existing) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('تم ترحيل ${_monthLabel(monthKey)} مسبقاً لهذا العبري')),
+    );
+    return;
+  }
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('تأكيد ترحيل الكشف الشهري'),
+      content: Text('سيتم حفظ كشف ${_monthLabel(monthKey)} للعبري ${Store.activeBoat.name} في الأرشيف، مع تسجيل أرصدة الصيادين المتبقية. لن تُحذف أي بيانات من سجلاتك.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ترحيل وحفظ')),
+      ],
+    ),
+  );
+  if (confirm != true) return;
+
+  final start = DateTime(selected.year, selected.month);
+  final end = DateTime(selected.year, selected.month + 1);
+  bool inMonth(String value) {
+    final date = _archiveDate(value);
+    return date != null && !date.isBefore(start) && date.isBefore(end);
+  }
+  final monthExpenses = Store.expenses
+      .where((e) => e.boatId == boatId && inMonth(e.date))
+      .map((e) => e.toJson()).toList();
+  final monthDebts = Store.debts
+      .where((e) => e.boatId == boatId && inMonth(e.date))
+      .map((e) => e.toJson()).toList();
+  final monthFishers = Store.fishers.where((f) => f.boatId == boatId).map((f) {
+    final balance = f.openingDebt + Store.debts.where((e) {
+      if (e.boatId != boatId || e.fishermanId != f.id) return false;
+      final date = _archiveDate(e.date);
+      return date != null && date.isBefore(end);
+    }).fold<double>(0, (sum, e) => sum + (e.type == 'دين' ? e.amount : -e.amount));
+    return <String, dynamic>{...f.toJson(), 'closingBalance': balance};
+  }).toList();
+
+  Store.monthlyArchives.add({
+    'id': newId(), 'month': monthKey, 'boatId': boatId,
+    'boatName': Store.activeBoat.name, 'createdAt': dateNow(),
+    'expenses': monthExpenses, 'debts': monthDebts,
+    'fishers': monthFishers,
+    'expenseTotal': monthExpenses.fold<double>(0, (sum, e) => sum + (((e['quantity'] as num? ?? 0) * (e['unitPrice'] as num? ?? 0)).toDouble())),
+    'debtTotal': monthDebts.where((e) => e['type'] == 'دين').fold<double>(0, (sum, e) => sum + ((e['amount'] as num?)?.toDouble() ?? 0)),
+    'paymentTotal': monthDebts.where((e) => e['type'] == 'سداد').fold<double>(0, (sum, e) => sum + ((e['amount'] as num?)?.toDouble() ?? 0)),
+  });
+  await Store.save();
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('تم ترحيل وحفظ كشف ${_monthLabel(monthKey)} بنجاح')),
+    );
+  }
+}
+
+Future<void> _reviewMonthlyArchives(BuildContext context) async {
+  final archives = Store.monthlyArchives
+      .where((a) => a['boatId'] == Store.activeBoatId)
+      .toList()
+    ..sort((a, b) => (b['month'] ?? '').toString().compareTo((a['month'] ?? '').toString()));
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('أرشيف الكشوفات الشهرية'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: archives.isEmpty
+            ? const Text('لا توجد كشوفات مرحلة لهذا العبري حتى الآن.')
+            : ListView.separated(
+                shrinkWrap: true,
+                itemCount: archives.length,
+                separatorBuilder: (_, __) => const Divider(),
+                itemBuilder: (_, i) {
+                  final a = archives[i];
+                  final month = (a['month'] ?? '').toString();
+                  final expenses = (a['expenseTotal'] as num? ?? 0).toDouble();
+                  final debt = (a['debtTotal'] as num? ?? 0).toDouble();
+                  final payments = (a['paymentTotal'] as num? ?? 0).toDouble();
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.calendar_month, color: gold),
+                    title: Text(_monthLabel(month)),
+                    subtitle: Text('المصروفات: ${money(expenses)} | الديون: ${money(debt)} | السداد: ${money(payments)}'),
+                    trailing: const Icon(Icons.chevron_left),
+                    onTap: () => showDialog<void>(
+                      context: ctx,
+                      builder: (detailCtx) {
+                        final fishers = (a['fishers'] as List? ?? []);
+                        final expensesList = (a['expenses'] as List? ?? []);
+                        final debtsList = (a['debts'] as List? ?? []);
+                        return AlertDialog(
+                          title: Text('كشف ${_monthLabel(month)}'),
+                          content: SizedBox(
+                            width: double.maxFinite,
+                            child: ListView(
+                              shrinkWrap: true,
+                              children: [
+                                Text('العبري: ${a['boatName'] ?? ''}'),
+                                Text('تاريخ الترحيل: ${a['createdAt'] ?? ''}'),
+                                const Divider(),
+                                Text('إجمالي المصروفات: ${money(expenses)} ر.ي'),
+                                Text('إجمالي الديون خلال الشهر: ${money(debt)} ر.ي'),
+                                Text('إجمالي السداد خلال الشهر: ${money(payments)} ر.ي'),
+                                const Divider(),
+                                const Text('أرصدة الصيادين عند نهاية الشهر', style: TextStyle(fontWeight: FontWeight.bold, color: gold)),
+                                ...fishers.map((f) => ListTile(
+                                  dense: true,
+                                  title: Text((f['name'] ?? '').toString()),
+                                  trailing: Text('${money((f['closingBalance'] as num? ?? 0))} ر.ي'),
+                                )),
+                                const Divider(),
+                                Text('عدد المصروفات المسجلة: ${expensesList.length}'),
+                                Text('عدد عمليات الدين والسداد: ${debtsList.length}'),
+                              ],
+                            ),
+                          ),
+                          actions: [TextButton(onPressed: () => Navigator.pop(detailCtx), child: const Text('إغلاق'))],
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
+    ),
+  );
+}
+
 class TotalsPage extends StatelessWidget {
   const TotalsPage({super.key});
 
@@ -1053,10 +1288,10 @@ class TotalsPage extends StatelessWidget {
         Store.expenses.where((item) => item.boatId == boatId).toList();
     final fishers =
         Store.fishers.where((item) => item.boatId == boatId).toList();
-    final debt = fishers.fold(
-      0.0,
-      (sum, fisher) => sum + Store.debtBalance(fisher),
-    );
+    final totalDebtEntries = Store.debts.where((e) => e.boatId == boatId && e.type == 'دين').fold(0.0, (sum, e) => sum + e.amount);
+    final totalPayments = Store.debts.where((e) => e.boatId == boatId && e.type == 'سداد').fold(0.0, (sum, e) => sum + e.amount);
+    final openingBalances = fishers.fold(0.0, (sum, f) => sum + f.openingDebt);
+    final debt = fishers.fold(0.0, (sum, fisher) => sum + Store.debtBalance(fisher));
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -1079,13 +1314,28 @@ class TotalsPage extends StatelessWidget {
                 .fold(0.0, (sum, item) => sum + item.total),
           ),
         ),
-        _totalCard('إجمالي مديونيات الصيادين', debt),
-        _totalCard('إجمالي المصروفات + المديونيات', Store.expenseTotal(boatId) + debt),
+        _totalCard('إجمالي الديون المسجلة', totalDebtEntries),
+        _totalCard('إجمالي السداد', totalPayments),
+        _totalCard('الأرصدة الافتتاحية', openingBalances),
+        _totalCard('الرصيد المتبقي للصيادين', debt),
+        _totalCard('المصروفات + الرصيد المتبقي', Store.expenseTotal(boatId) + debt),
         const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: () => makePdfReport(),
           icon: const Icon(Icons.picture_as_pdf),
           label: const Text('تصدير تقرير PDF'),
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: () => _createMonthlyArchive(context),
+          icon: const Icon(Icons.archive),
+          label: const Text('ترحيل كشف شهر إلى الأرشيف'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => _reviewMonthlyArchives(context),
+          icon: const Icon(Icons.history),
+          label: const Text('مراجعة الكشوفات الشهرية السابقة'),
         ),
         const Padding(
           padding: EdgeInsets.only(top: 12),
@@ -1281,6 +1531,19 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
+        Card(color: navy2, child: SwitchListTile(
+          secondary: const Icon(Icons.brightness_6, color: gold),
+          title: const Text('الوضع الليلي'),
+          subtitle: const Text('يمكن التبديل بين المظهر الفاتح والداكن'),
+          value: Store.isDarkMode,
+          activeColor: gold,
+          onChanged: (value) async { Store.isDarkMode = value; await Store.save(); if (mounted) { setState(() {}); widget.onChanged(); } },
+        )),
+        Card(color: navy2, child: Column(children: [
+          ListTile(leading: const Icon(Icons.backup, color: gold), title: const Text('إنشاء نسخة احتياطية'), subtitle: const Text('حفظ جميع بيانات العباري في ملف JSON'), onTap: _exportBackup),
+          const Divider(height: 1),
+          ListTile(leading: const Icon(Icons.restore, color: gold), title: const Text('استعادة نسخة احتياطية'), subtitle: const Text('استيراد ملف JSON محفوظ سابقاً'), onTap: _importBackup),
+        ])),
         Card(
           color: navy2,
           child: ListTile(
@@ -1306,6 +1569,62 @@ class _SettingsPageState extends State<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('تم حفظ البريد على الجهاز')),
     );
+  }
+
+  Future<void> _exportBackup() async {
+    try {
+      final data = <String, dynamic>{
+        'format': 'fishing_boat_accounts_backup', 'version': 1,
+        'createdAt': DateTime.now().toIso8601String(),
+        'boats': Store.boats.map((e) => e.toJson()).toList(),
+        'expenses': Store.expenses.map((e) => e.toJson()).toList(),
+        'fishers': Store.fishers.map((e) => e.toJson()).toList(),
+        'debts': Store.debts.map((e) => e.toJson()).toList(),
+        'email': Store.email, 'activeBoatId': Store.activeBoatId,
+        'isDarkMode': Store.isDarkMode,
+        'monthlyArchives': Store.monthlyArchives,
+      };
+      final bytes = Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent('  ').convert(data)));
+      final path = await FilePicker.platform.saveFile(dialogTitle: 'حفظ النسخة الاحتياطية', fileName: 'boat_accounts_backup_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.json', type: FileType.custom, allowedExtensions: ['json'], bytes: bytes);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(path == null ? 'تم إلغاء الحفظ' : 'تم إنشاء النسخة الاحتياطية')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إنشاء النسخة: $e')));
+    }
+  }
+
+  Future<void> _importBackup() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json'], withData: true);
+      if (result == null || result.files.single.bytes == null) return;
+      final decoded = jsonDecode(utf8.decode(result.files.single.bytes!));
+      if (decoded is! Map || decoded['format'] != 'fishing_boat_accounts_backup') throw const FormatException('ملف النسخة غير صالح');
+      final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+        title: const Text('تأكيد الاستعادة'),
+        content: const Text('ستُستبدل البيانات الحالية بمحتويات النسخة المختارة. يُفضّل إنشاء نسخة احتياطية من الوضع الحالي أولاً.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('استعادة'))],
+      ));
+      if (confirm != true) return;
+      List<dynamic> list(String key) => decoded[key] is List ? decoded[key] as List : <dynamic>[];
+      Store.boats = list('boats').map((e) => Boat.fromJson(Map<String, dynamic>.from(e))).toList();
+      Store.expenses = list('expenses').map((e) => Expense.fromJson(Map<String, dynamic>.from(e))).toList();
+      Store.fishers = list('fishers').map((e) => Fisherman.fromJson(Map<String, dynamic>.from(e))).toList();
+      Store.debts = list('debts').map((e) => DebtEntry.fromJson(Map<String, dynamic>.from(e))).toList();
+      if (Store.boats.isEmpty) throw const FormatException('النسخة لا تحتوي على عبري');
+      Store.email = decoded['email']?.toString() ?? '';
+      Store.activeBoatId = decoded['activeBoatId']?.toString() ?? Store.boats.first.id;
+      if (!Store.boats.any((b) => b.id == Store.activeBoatId)) Store.activeBoatId = Store.boats.first.id;
+      Store.isDarkMode = decoded['isDarkMode'] is bool ? decoded['isDarkMode'] as bool : true;
+      Store.monthlyArchives = decoded['monthlyArchives'] is List
+          ? (decoded['monthlyArchives'] as List).map((e) => Map<String, dynamic>.from(e)).toList()
+          : [];
+      await Store.save();
+      if (!mounted) return;
+      setState(() {}); widget.onChanged();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت استعادة النسخة الاحتياطية')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذرت الاستعادة: $e')));
+    }
   }
 
   Future<void> _addBoat() async {
