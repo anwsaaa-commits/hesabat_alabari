@@ -1751,42 +1751,85 @@ Widget field(
   );
 }
 
+
 Future<void> makePdfReport() async {
   final boat = Store.activeBoat;
   final document = pw.Document();
-  final arabicFontData = await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
-  final arabicBoldData = await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf');
+
+  final arabicFontData =
+      await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
+  final arabicBoldData =
+      await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf');
+
   final arabicFont = pw.Font.ttf(arabicFontData);
   final arabicBold = pw.Font.ttf(arabicBoldData);
-  final pdfTheme = pw.ThemeData.withFont(base: arabicFont, bold: arabicBold);
-  final expenses =
-      Store.expenses.where((item) => item.boatId == boat.id).toList();
-  final fishers =
-      Store.fishers.where((item) => item.boatId == boat.id).toList();
+
+  final pdfTheme = pw.ThemeData.withFont(
+    base: arabicFont,
+    bold: arabicBold,
+  );
+
+  final expenses = Store.expenses
+      .where((item) => item.boatId == boat.id)
+      .toList()
+    ..sort((a, b) => b.date.compareTo(a.date));
+
+  final fishers = Store.fishers
+      .where((item) => item.boatId == boat.id)
+      .toList();
+
+  final debtEntries = Store.debts
+      .where((item) => item.boatId == boat.id)
+      .toList()
+    ..sort((a, b) => b.date.compareTo(a.date));
+
+  final fisherNames = {
+    for (final fisher in fishers) fisher.id: fisher.name,
+  };
+
   final totalDebt = fishers.fold(
     0.0,
     (sum, fisher) => sum + Store.debtBalance(fisher),
   );
 
+  final totalDebtEntries = debtEntries
+      .where((entry) => entry.type == 'دين')
+      .fold(0.0, (sum, entry) => sum + entry.amount);
+
+  final totalPayments = debtEntries
+      .where((entry) => entry.type == 'سداد')
+      .fold(0.0, (sum, entry) => sum + entry.amount);
+
   document.addPage(
     pw.MultiPage(
       theme: pdfTheme,
+      pageTheme: pw.PageTheme(
+        textDirection: pw.TextDirection.rtl,
+      ),
       build: (context) => [
         pw.Header(
           level: 0,
-          child: pw.Text('تقرير حسابات العبري: ${boat.name}'),
+          child: pw.Text(
+            'تقرير حسابات العبري: ${boat.name}',
+            style: pw.TextStyle(font: arabicBold, fontSize: 20),
+          ),
         ),
         pw.Text('تاريخ التقرير: ${dateNow()}'),
-        pw.SizedBox(height: 12),
+        pw.SizedBox(height: 10),
+
         pw.Text(
-          'رخصة الصومال: ${boat.licenseNo.isEmpty ? 'غير مسجلة' : boat.licenseNo} | '
-          'الانتهاء: ${boat.licenseExpiry.isEmpty ? 'غير مسجل' : boat.licenseExpiry}',
+          'رخصة الصومال: ${boat.licenseNo.isEmpty ? 'غير مسجلة' : boat.licenseNo}',
         ),
-        pw.SizedBox(height: 14),
+        pw.Text(
+          'تاريخ انتهاء الرخصة: ${boat.licenseExpiry.isEmpty ? 'غير مسجل' : boat.licenseExpiry}',
+        ),
+
+        pw.SizedBox(height: 16),
         pw.Header(
           level: 1,
           child: pw.Text('مصروفات تجهيز العبري للإبحار'),
         ),
+
         pw.TableHelper.fromTextArray(
           headers: [
             'القسم',
@@ -1796,45 +1839,91 @@ Future<void> makePdfReport() async {
             'سعر الوحدة',
             'الإجمالي',
           ],
-          data: expenses
-              .map(
-                (item) => [
-                  item.category,
-                  item.item,
-                  item.date,
-                  money(item.quantity),
-                  money(item.unitPrice),
-                  money(item.total),
-                ],
-              )
-              .toList(),
+          data: expenses.map((item) => [
+            item.category,
+            item.item,
+            item.date,
+            money(item.quantity),
+            money(item.unitPrice),
+            money(item.total),
+          ]).toList(),
+          cellAlignment: pw.Alignment.centerRight,
+          headerAlignment: pw.Alignment.center,
+          cellStyle: pw.TextStyle(font: arabicFont, fontSize: 8),
+          headerStyle: pw.TextStyle(font: arabicBold, fontSize: 8),
         ),
-        pw.SizedBox(height: 12),
-        pw.Text(
-          'إجمالي المصروفات: ${money(Store.expenseTotal(boat.id))} ريال يمني',
-        ),
-        pw.SizedBox(height: 14),
-        pw.Header(level: 1, child: pw.Text('مديونيات الصيادين')),
-        pw.TableHelper.fromTextArray(
-          headers: ['اسم الصياد', 'الجوال', 'العنوان', 'الرصيد'],
-          data: fishers
-              .map(
-                (fisher) => [
-                  fisher.name,
-                  fisher.phone,
-                  fisher.address,
-                  money(Store.debtBalance(fisher)),
-                ],
-              )
-              .toList(),
-        ),
+
         pw.SizedBox(height: 10),
         pw.Text(
-          'إجمالي مديونيات الصيادين: ${money(totalDebt)} ريال يمني',
+          'إجمالي المصروفات: ${money(Store.expenseTotal(boat.id))} ريال يمني',
+          style: pw.TextStyle(font: arabicBold),
         ),
+
+        pw.SizedBox(height: 16),
+        pw.Header(
+          level: 1,
+          child: pw.Text('بيانات الصيادين والأرصدة'),
+        ),
+
+        pw.TableHelper.fromTextArray(
+          headers: ['اسم الصياد', 'الجوال', 'العنوان', 'الرصيد المتبقي'],
+          data: fishers.map((fisher) => [
+            fisher.name,
+            fisher.phone,
+            fisher.address,
+            money(Store.debtBalance(fisher)),
+          ]).toList(),
+          cellAlignment: pw.Alignment.centerRight,
+          headerAlignment: pw.Alignment.center,
+          cellStyle: pw.TextStyle(font: arabicFont, fontSize: 8),
+          headerStyle: pw.TextStyle(font: arabicBold, fontSize: 8),
+        ),
+
+        pw.SizedBox(height: 10),
+        pw.Text(
+          'إجمالي الرصيد المتبقي: ${money(totalDebt)} ريال',
+          style: pw.TextStyle(font: arabicBold),
+        ),
+
+        pw.SizedBox(height: 16),
+        pw.Header(
+          level: 1,
+          child: pw.Text('تفاصيل الديون والسداد'),
+        ),
+
+        pw.TableHelper.fromTextArray(
+          headers: [
+            'التاريخ',
+            'اسم الصياد',
+            'النوع',
+            'الوصف',
+            'المبلغ',
+          ],
+          data: debtEntries.map((entry) => [
+            entry.date,
+            fisherNames[entry.fishermanId] ?? 'صياد غير مسجل',
+            entry.type,
+            entry.description,
+            money(entry.amount),
+          ]).toList(),
+          cellAlignment: pw.Alignment.centerRight,
+          headerAlignment: pw.Alignment.center,
+          cellStyle: pw.TextStyle(font: arabicFont, fontSize: 8),
+          headerStyle: pw.TextStyle(font: arabicBold, fontSize: 8),
+        ),
+
+        pw.SizedBox(height: 12),
+        pw.Text('إجمالي الديون المسجلة: ${money(totalDebtEntries)} ريال'),
+        pw.Text('إجمالي السداد: ${money(totalPayments)} ريال'),
+        pw.Text(
+          'الرصيد المتبقي: ${money(totalDebt)} ريال',
+          style: pw.TextStyle(font: arabicBold),
+        ),
+
         pw.SizedBox(height: 20),
         pw.Text(
-          'ملاحظة: هذا التقرير يعكس البيانات المسجلة في التطبيق وقت التصدير.',
+          'هذا التقرير يعرض البيانات المسجلة في التطبيق وقت التصدير.',
+          style: pw.TextStyle(font: arabicFont, fontSize: 9),
         ),
       ],
     ),
