@@ -384,9 +384,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'إدارة حسابات العبري',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(tooltip: 'تبديل الوضع الفاتح والداكن', icon: Icon(Store.isDarkMode ? Icons.light_mode : Icons.dark_mode, color: gold), onPressed: () async { Store.isDarkMode = !Store.isDarkMode; await Store.save(); widget.onThemeChanged(); }),
@@ -1597,6 +1597,7 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json'], withData: true);
       if (result == null || result.files.single.bytes == null) return;
+      if (!mounted) return;
       final decoded = jsonDecode(utf8.decode(result.files.single.bytes!));
       if (decoded is! Map || decoded['format'] != 'fishing_boat_accounts_backup') throw const FormatException('ملف النسخة غير صالح');
       final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
