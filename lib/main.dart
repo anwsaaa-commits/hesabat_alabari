@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
@@ -45,6 +46,19 @@ class _BoatAccountsAppState extends State<BoatAccountsApp> {
         brightness: dark ? Brightness.dark : Brightness.light,
         scaffoldBackgroundColor: dark ? navy : const Color(0xFFF3F5F7),
         colorScheme: ColorScheme.fromSeed(seedColor: gold, brightness: dark ? Brightness.dark : Brightness.light),
+        cardTheme: CardTheme(
+          color: dark ? navy2 : Colors.white,
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: dark ? gold.withOpacity(0.18) : const Color(0xFFD5DEE5)),
+          ),
+        ),
+        textTheme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light).textTheme.apply(
+          bodyColor: dark ? Colors.white : const Color(0xFF172B3A),
+          displayColor: dark ? Colors.white : const Color(0xFF172B3A),
+        ),
         appBarTheme: AppBarTheme(backgroundColor: dark ? navy : Colors.white, foregroundColor: dark ? Colors.white : navy),
         inputDecorationTheme: InputDecorationTheme(
           filled: true, fillColor: dark ? navy2 : const Color(0xFFE8EDF1),
@@ -1051,7 +1065,7 @@ class _FishermenPageState extends State<FishermenPage> {
       Text('كشف الحساب: ديون ${money(debts)} • سداد ${money(payments)} • رصيد افتتاحي ${money(fisher.openingDebt)}', style: const TextStyle(color: gold, fontWeight: FontWeight.bold)),
       const SizedBox(height: 6),
       if (entries.isEmpty) const Text('لا توجد عمليات مسجلة بعد', style: TextStyle(color: Colors.white60)),
-      ...entries.map((entry) => Card(color: navy2, child: ListTile(
+      ...entries.map((entry) => Card(child: ListTile(
         dense: true,
         title: Text('${entry.type}: ${money(entry.amount)} ر.ي'),
         subtitle: Text('${entry.date}\n${entry.description}'),
@@ -1518,7 +1532,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'حاليًا يتم حفظ البيانات على هذا الجهاز. حفظ البريد هنا لا ينشئ نسخة سحابية؛ يلزم ربط خدمة نسخ احتياطي لاحقًا.',
+                  'حفظ البريد لا يرسل الملفات تلقائيًا. أنشئ ملف JSON ثم احفظه على الهاتف أو أرسله من تطبيق البريد يدويًا.',
                   style: TextStyle(color: Colors.white60),
                 ),
                 const SizedBox(height: 10),
@@ -1531,7 +1545,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        Card(color: navy2, child: SwitchListTile(
+        Card(child: SwitchListTile(
           secondary: const Icon(Icons.brightness_6, color: gold),
           title: const Text('الوضع الليلي'),
           subtitle: const Text('يمكن التبديل بين المظهر الفاتح والداكن'),
@@ -1539,7 +1553,7 @@ class _SettingsPageState extends State<SettingsPage> {
           activeColor: gold,
           onChanged: (value) async { Store.isDarkMode = value; await Store.save(); if (mounted) { setState(() {}); widget.onChanged(); } },
         )),
-        Card(color: navy2, child: Column(children: [
+        Card(child: Column(children: [
           ListTile(leading: const Icon(Icons.backup, color: gold), title: const Text('إنشاء نسخة احتياطية'), subtitle: const Text('حفظ جميع بيانات العباري في ملف JSON'), onTap: _exportBackup),
           const Divider(height: 1),
           ListTile(leading: const Icon(Icons.restore, color: gold), title: const Text('استعادة نسخة احتياطية'), subtitle: const Text('استيراد ملف JSON محفوظ سابقاً'), onTap: _importBackup),
@@ -1587,7 +1601,11 @@ class _SettingsPageState extends State<SettingsPage> {
       final bytes = Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent('  ').convert(data)));
       final path = await FilePicker.platform.saveFile(dialogTitle: 'حفظ النسخة الاحتياطية', fileName: 'boat_accounts_backup_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.json', type: FileType.custom, allowedExtensions: ['json'], bytes: bytes);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(path == null ? 'تم إلغاء الحفظ' : 'تم إنشاء النسخة الاحتياطية')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(path == null
+            ? 'لم يؤكد النظام حفظ الملف. اختر مجلدًا واحفظ النسخة ثم تحقق من وجود ملف JSON.'
+            : 'تم حفظ النسخة الاحتياطية في: $path')),
+      );
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إنشاء النسخة: $e')));
     }
@@ -1736,6 +1754,11 @@ Widget field(
 Future<void> makePdfReport() async {
   final boat = Store.activeBoat;
   final document = pw.Document();
+  final arabicFontData = await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
+  final arabicBoldData = await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf');
+  final arabicFont = pw.Font.ttf(arabicFontData);
+  final arabicBold = pw.Font.ttf(arabicBoldData);
+  final pdfTheme = pw.ThemeData.withFont(base: arabicFont, bold: arabicBold);
   final expenses =
       Store.expenses.where((item) => item.boatId == boat.id).toList();
   final fishers =
@@ -1747,6 +1770,7 @@ Future<void> makePdfReport() async {
 
   document.addPage(
     pw.MultiPage(
+      theme: pdfTheme,
       build: (context) => [
         pw.Header(
           level: 0,
