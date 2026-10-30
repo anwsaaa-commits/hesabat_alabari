@@ -1801,11 +1801,11 @@ Future<void> makePdfReport() async {
       .fold(0.0, (sum, entry) => sum + entry.amount);
 
   document.addPage(
-    pw.MultiPage(
-      theme: pdfTheme,
-      pageTheme: pw.PageTheme(
-        textDirection: pw.TextDirection.rtl,
-      ),
+  pw.MultiPage(
+    theme: pdfTheme,
+    pageTheme: const pw.PageTheme(
+      textDirection: pw.TextDirection.rtl,
+    ),
       build: (context) => [
         pw.Header(
           level: 0,
